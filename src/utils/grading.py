@@ -69,7 +69,7 @@ def run_grading(
     # not having Pillow/pytesseract/imagehash/etc baked in).
     _ensure_deps_code = '''
 def _ensure_deps():
-    import subprocess, importlib
+    import subprocess, importlib, sys
     deps = ["pytesseract", "Pillow", "numpy", "imagehash", "cairosvg",
             "pikepdf", "pdf2image", "pdfannots", "pypdf", "psutil",
             "openai", "requests"]
@@ -80,21 +80,26 @@ def _ensure_deps():
             importlib.import_module(mod)
         except Exception:
             missing.append(d)
-    if missing:
+    if not missing:
+        return
+    # Try in cascading flavors (handle older + newer pip):
+    attempts = [
+        [sys.executable, "-m", "pip", "install", "--quiet",
+         "--break-system-packages", "--disable-pip-version-check",
+         "--root-user-action=ignore"],
+        [sys.executable, "-m", "pip", "install", "--quiet",
+         "--break-system-packages", "--disable-pip-version-check"],
+        [sys.executable, "-m", "pip", "install", "--quiet",
+         "--disable-pip-version-check"],
+        ["pip", "install", "--quiet"],
+    ]
+    for prefix in attempts:
         try:
-            subprocess.check_call(["pip", "install", "--quiet",
-                                    "--break-system-packages",
-                                    "--disable-pip-version-check",
-                                    "--root-user-action=ignore", *missing],
-                                   timeout=180)
+            subprocess.check_call(prefix + missing, timeout=240)
+            return
         except Exception:
-            try:
-                subprocess.check_call(["pip", "install", "--quiet",
-                                        "--disable-pip-version-check",
-                                        "--root-user-action=ignore", *missing],
-                                       timeout=180)
-            except Exception as e:
-                print(f"[_ensure_deps] WARN: pip install failed: {e}", flush=True)
+            continue
+    print(f"[_ensure_deps] WARN: could not install {missing}", flush=True)
 _ensure_deps()
 '''
     runner_code = "\n".join([

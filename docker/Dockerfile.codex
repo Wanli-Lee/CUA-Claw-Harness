@@ -25,13 +25,29 @@ RUN HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
     npm install -g @openai/codex@${CODEX_VERSION} \
  && codex --version
 
+# Pre-create config dir so writes from runner.py don't race.
+RUN mkdir -p /root/.codex/sessions /root/.codex/skills
+
+# Bake grader deps into image (Pillow + numpy + imagehash + ... — see
+# wildclawbench GRADER_RUNNER_TEMPLATE._ensure_deps). The fallback
+# pip-install in src/utils/grading.py only kicks in if these are missing.
+# Use --break-system-packages on PEP 668 systems; harmless on older pip
+# (which ignores unknown flags after upgrade).
+RUN HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    pip install --no-cache-dir --upgrade pip \
+ && HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    pip install --no-cache-dir \
+        Pillow numpy imagehash pytesseract cairosvg \
+        pikepdf pdf2image pdfannots pypdf psutil openai requests
+
 # Clear proxy env so runtime traffic (LiteLLM at 172.17.0.1:4200, cop-api
 # at 172.17.0.1:4141) goes direct via the docker bridge, NOT through
 # host's clash proxy (which is unreachable from a non-host-net container).
 ENV http_proxy=  https_proxy=  HTTP_PROXY=  HTTPS_PROXY=  no_proxy=*  NO_PROXY=*
-
-# Pre-create config dir so writes from runner.py don't race.
-RUN mkdir -p /root/.codex/sessions /root/.codex/skills
 
 LABEL org.opencontainers.image.title="wildclawbench-codex-ubuntu" \
       org.opencontainers.image.source="https://github.com/Wanli-Lee/CUA-Claw-Harness" \

@@ -211,7 +211,13 @@ def run_warmup(
     *,
     detach_background: bool = False,
 ) -> None:
-    """Execute warmup bash commands line by line inside the container (skip blank lines and comments)."""
+    """Execute warmup bash commands line by line inside the container (skip blank lines and comments).
+
+    By default any command failure aborts the task. Set WCB_WARMUP_SOFT_FAIL=1
+    to demote failures to warnings (matches the wildclawbench lite runner's
+    behavior — many task warmups assume baked-in apps like xrandr/blender
+    that the CUA-Claw-Harness backend images don't ship).
+    """
     if not warmup.strip():
         return
     commands = [
@@ -222,7 +228,9 @@ def run_warmup(
     if not commands:
         return
 
-    logger.info("[%s] Running warmup (%d commands)", task_id, len(commands))
+    soft_fail = os.environ.get("WCB_WARMUP_SOFT_FAIL", "1") not in ("", "0", "false", "False")
+    logger.info("[%s] Running warmup (%d commands, soft_fail=%s)",
+                task_id, len(commands), soft_fail)
     for idx, cmd in enumerate(commands, start=1):
         logger.info("[%s] warmup: %s", task_id, cmd)
         stripped_cmd = cmd.rstrip()
@@ -240,6 +248,10 @@ def run_warmup(
                 text=True,
             )
             if r.returncode != 0:
+                if soft_fail:
+                    logger.warning("[%s] warmup bg failed (soft): %s\n%s",
+                                   task_id, cmd, r.stderr[:400])
+                    continue
                 raise RuntimeError(
                     f"Warmup background command failed: {cmd!r}\n{r.stderr}"
                 )
@@ -250,6 +262,10 @@ def run_warmup(
             capture_output=True, text=True,
         )
         if r.returncode != 0:
+            if soft_fail:
+                logger.warning("[%s] warmup failed (soft, rc=%d): %s\n%s",
+                               task_id, r.returncode, cmd, r.stderr[:400])
+                continue
             raise RuntimeError(f"Warmup command failed: {cmd!r}\n{r.stderr}")
 
 

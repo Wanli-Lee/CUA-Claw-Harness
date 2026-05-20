@@ -118,9 +118,22 @@ def main() -> None:
             image_model=args.openclaw_image_model,
         )
     elif backend_name == "codex":
+        # Codex 0.130+ rejects wire_api='chat'; the LiteLLM at 4200 does
+        # NOT expose /v1/responses for gpt-5.5 (verified: 30s timeout).
+        # Use the cop-api at 4141 (judge endpoint), which DOES speak
+        # /v1/responses for gpt-5.5. Override with WCB_CODEX_BASE_URL.
+        codex_base = os.environ.get(
+            "WCB_CODEX_BASE_URL",
+            os.environ.get("WCB_JUDGE_BASE_URL", "http://172.17.0.1:4141/v1"),
+        )
+        codex_key = os.environ.get(
+            "WCB_CODEX_API_KEY",
+            os.environ.get("WCB_JUDGE_API_KEY", "sk-empty"),
+        ) or "sk-empty"
+        logger.info("Codex backend endpoint override: %s", codex_base)
         backend = CodexAgent(
-            openrouter_api_key=agent_api_key,
-            openrouter_base_url=normalize_openrouter_base_url_for_openclaw(agent_base_url),
+            openrouter_api_key=codex_key,
+            openrouter_base_url=normalize_openrouter_base_url_for_openclaw(codex_base),
         )
     elif backend_name == "claudecode":
         backend = ClaudeCodeAgent(

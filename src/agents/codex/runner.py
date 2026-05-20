@@ -433,11 +433,12 @@ class CodexAgent(BaseAgent):
     def _default_wire_api_for_model(self, model: str) -> str | None:
         """Return an explicit wire API override.
 
-        Upstream comment claimed Codex v0.121 rejects ``wire_api = "chat"``.
-        That is no longer true on codex 0.130.0 (verified locally) — and for
-        CUA-Claw-Harness we DEFAULT to chat because our self-hosted LiteLLM
-        proxy (172.17.0.1:4200) only exposes /v1/chat/completions, NOT
-        /v1/responses. Override with CODEX_WIRE_API={chat,responses,default}.
+        Codex 0.130+ requires ``wire_api = "responses"`` (the chat-completions
+        wire was removed; see codex GH issue 7782). For CUA-Claw-Harness we
+        therefore point codex at the 4141 cop-api endpoint (which speaks
+        /v1/responses for gpt-5.5) instead of the 4200 LiteLLM (which only
+        speaks /v1/chat/completions). Override with
+        CODEX_WIRE_API={chat,responses,default}.
         """
         _ = model
         override = os.environ.get("CODEX_WIRE_API", "").strip().lower()
@@ -445,8 +446,7 @@ class CodexAgent(BaseAgent):
             return None
         if override in ("chat", "responses"):
             return override
-        # default (no override): force chat for WCB endpoint compatibility
-        return "chat"
+        return "responses"
 
     @staticmethod
     def _is_minimax_model(model: str) -> bool:
