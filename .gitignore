@@ -7,3 +7,5 @@ output/
 *.log
 .env
 .DS_Store
+# Docker build cache (hermes-agent source cloned per-host, not committed)
+docker/_build_context/

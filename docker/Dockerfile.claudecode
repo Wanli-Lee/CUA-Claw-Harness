@@ -1,0 +1,42 @@
+# CUA-Claw-Harness claude-code backend image
+ARG BASE=wildclawbench-ubuntu:v1.2
+FROM ${BASE}
+
+# Route build-time network through host's clash proxy at 127.0.0.1:7890
+# (requires `docker build --network host`).
+ARG BUILD_PROXY=http://127.0.0.1:7890
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ARG CLAUDE_CODE_VERSION=2.1.76
+
+# Install claude-code via npm (no bun needed; ships a pure JS cli).
+RUN HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    npm config set registry "${NPM_REGISTRY}" \
+ && HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+ && claude --version
+
+# Clear proxy env for runtime.
+ENV http_proxy=  https_proxy=  HTTP_PROXY=  HTTPS_PROXY=  no_proxy=*  NO_PROXY=*
+
+# Stage the upstream-expected layout: claudecode runner.py:359-401 expects
+# /claude_code/start.sh to exist (it greps for IS_SANDBOX=1).
+RUN mkdir -p /claude_code/log /root/.claude/skills /root/.claude/projects \
+ && cat > /claude_code/start.sh <<'EOSH'
+#!/bin/bash
+# Minimal start.sh shim so upstream runner.py:_run_prompt works.
+# Strips off the leading "./start.sh" and forwards remaining flags to
+# the global claude CLI. IS_SANDBOX=1 / --add-dir / -p / --model are all
+# passed through unchanged.
+cd /tmp_workspace 2>/dev/null || true
+exec claude --dangerously-skip-permissions --output-format text "$@"
+EOSH
+RUN chmod +x /claude_code/start.sh
+
+LABEL org.opencontainers.image.title="wildclawbench-claudecode-ubuntu" \
+      org.opencontainers.image.source="https://github.com/Wanli-Lee/CUA-Claw-Harness" \
+      cua.claw.harness="claudecode" \
+      cua.claw.claude_code_version="${CLAUDE_CODE_VERSION}"

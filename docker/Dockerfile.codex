@@ -1,0 +1,39 @@
+# CUA-Claw-Harness codex backend image
+# Built on top of the same wildclawbench-ubuntu:v1.2 the openclaw harness uses,
+# so warmup scripts that assume baked-in apps (xrandr, gnome-control-center,
+# tesseract, pillow, ...) continue to work. We only add the codex CLI on top.
+ARG BASE=wildclawbench-ubuntu:v1.2
+FROM ${BASE}
+
+# Route build-time network through the host's clash proxy at 127.0.0.1:7890
+# (reachable only when built with `docker build --network host`). At runtime
+# these are cleared so the agent container talks directly via docker bridge.
+ARG BUILD_PROXY=http://127.0.0.1:7890
+
+# Use upstream npmjs (faster + complete via proxy than China mirror).
+ARG NPM_REGISTRY=https://registry.npmjs.org
+
+# Install codex (pinned to a known-working tag for reproducibility).
+ARG CODEX_VERSION=0.130.0
+RUN HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    npm config set registry "${NPM_REGISTRY}" \
+ && HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    npm install -g @openai/codex@${CODEX_VERSION} \
+ && codex --version
+
+# Clear proxy env so runtime traffic (LiteLLM at 172.17.0.1:4200, cop-api
+# at 172.17.0.1:4141) goes direct via the docker bridge, NOT through
+# host's clash proxy (which is unreachable from a non-host-net container).
+ENV http_proxy=  https_proxy=  HTTP_PROXY=  HTTPS_PROXY=  no_proxy=*  NO_PROXY=*
+
+# Pre-create config dir so writes from runner.py don't race.
+RUN mkdir -p /root/.codex/sessions /root/.codex/skills
+
+LABEL org.opencontainers.image.title="wildclawbench-codex-ubuntu" \
+      org.opencontainers.image.source="https://github.com/Wanli-Lee/CUA-Claw-Harness" \
+      cua.claw.harness="codex" \
+      cua.claw.codex_version="${CODEX_VERSION}"

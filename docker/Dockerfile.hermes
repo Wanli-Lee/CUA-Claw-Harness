@@ -1,0 +1,66 @@
+# CUA-Claw-Harness hermes-agent backend image
+ARG BASE=wildclawbench-ubuntu:v1.2
+FROM ${BASE}
+
+# Build-time proxy for sites blocked by GFW (deadsnakes PPA, etc.). Ubuntu
+# main archive is faster from a China mirror (tsinghua) without proxy.
+ARG BUILD_PROXY=http://127.0.0.1:7890
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG HERMES_INSTALL_DIR=/opt/hermes
+
+# (1) Replace ubuntu archive with China mirror; clear stale proxy on apt.
+# (2) Use clash proxy only for the deadsnakes PPA fetches (launchpad.net is
+#     blocked); apt fetches from tsinghua mirror should NOT proxy.
+RUN sed -i "s@archive.ubuntu.com@${APT_MIRROR}@g; s@security.ubuntu.com@${APT_MIRROR}@g" /etc/apt/sources.list \
+ && rm -f /etc/apt/apt.conf.d/*proxy* \
+ && echo 'Acquire::http::Proxy::launchpad.net "'${BUILD_PROXY}'";' >  /etc/apt/apt.conf.d/99build-proxy \
+ && echo 'Acquire::https::Proxy::launchpad.net "'${BUILD_PROXY}'";' >> /etc/apt/apt.conf.d/99build-proxy \
+ && echo 'Acquire::http::Proxy::ppa.launchpad.net "'${BUILD_PROXY}'";' >> /etc/apt/apt.conf.d/99build-proxy \
+ && echo 'Acquire::https::Proxy::ppa.launchpad.net "'${BUILD_PROXY}'";' >> /etc/apt/apt.conf.d/99build-proxy \
+ && echo 'Acquire::http::Proxy::ppa.launchpadcontent.net "'${BUILD_PROXY}'";' >> /etc/apt/apt.conf.d/99build-proxy \
+ && echo 'Acquire::https::Proxy::ppa.launchpadcontent.net "'${BUILD_PROXY}'";' >> /etc/apt/apt.conf.d/99build-proxy \
+ && chmod 1777 /tmp
+
+# Install python 3.11 from deadsnakes (hermes-agent requires >=3.11).
+RUN env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        apt-get update -y \
+ && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            software-properties-common gnupg ca-certificates curl git \
+ && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        HTTPS_PROXY=${BUILD_PROXY} HTTP_PROXY=${BUILD_PROXY} \
+        add-apt-repository -y ppa:deadsnakes/ppa \
+ && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        apt-get update -y \
+ && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            python3.11 python3.11-venv python3.11-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copy hermes-agent source from build context (cloned by host).
+COPY docker/_build_context/hermes-agent ${HERMES_INSTALL_DIR}
+
+# Create venv with python 3.11 + install hermes (editable).
+RUN python3.11 -m venv ${HERMES_INSTALL_DIR}/.venv \
+ && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    ${HERMES_INSTALL_DIR}/.venv/bin/pip install --no-cache-dir \
+        -U pip wheel setuptools
+
+RUN env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    bash -c "cd ${HERMES_INSTALL_DIR} && ${HERMES_INSTALL_DIR}/.venv/bin/pip install --no-cache-dir -e ."
+
+# Sanity check: AIAgent importable from run_agent.
+RUN cd ${HERMES_INSTALL_DIR} \
+ && ${HERMES_INSTALL_DIR}/.venv/bin/python3 -c "import sys; sys.path.insert(0, '.'); from run_agent import AIAgent; print('AIAgent OK')"
+
+RUN mkdir -p /root/.hermes/sessions /root/.hermes/skills /root/.openclaw/agents/main/sessions \
+ && rm -f /etc/apt/apt.conf.d/99build-proxy
+
+# Clear proxy env for runtime.
+ENV http_proxy=  https_proxy=  HTTP_PROXY=  HTTPS_PROXY=  no_proxy=*  NO_PROXY=*
+
+LABEL org.opencontainers.image.title="wildclawbench-hermes-agent" \
+      org.opencontainers.image.source="https://github.com/Wanli-Lee/CUA-Claw-Harness" \
+      cua.claw.harness="hermes"

@@ -1,0 +1,10 @@
+# Top-level repo .dockerignore — keeps base context tight
+tasks_wcb
+WildClawBench_report.pdf
+assets
+.git
+.github
+output
+__pycache__
+*.pyc
+docker/_build_context/hermes-agent/.git
