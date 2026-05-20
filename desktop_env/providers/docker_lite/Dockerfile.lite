@@ -1,0 +1,46 @@
+# Lite-CLI prepped variant of wildclawbench-ubuntu:v1.2.
+#
+# Pre-installs sudo + creates the `user` (uid 1000) account so that
+# DockerLiteEnv can boot a per-task container without needing apt at runtime
+# (which is fragile when archive.ubuntu.com is unreachable from the host LAN).
+#
+# Build:
+#   docker build -f desktop_env/providers/docker_lite/Dockerfile.lite \
+#                -t wildclawbench-ubuntu:v1.2-lite .
+FROM wildclawbench-ubuntu:v1.2
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY=
+
+# Repoint apt to a working mirror (the image's stale http_proxy points at a
+# host that this LAN cannot reach, and archive.ubuntu.com is also blocked).
+RUN set -e; \
+    chmod 1777 /tmp; \
+    sed -i \
+      -e 's@http://archive.ubuntu.com/ubuntu/@http://mirrors.aliyun.com/ubuntu/@g' \
+      -e 's@http://security.ubuntu.com/ubuntu/@http://mirrors.aliyun.com/ubuntu/@g' \
+      /etc/apt/sources.list; \
+    if ls /etc/apt/sources.list.d/*.sources >/dev/null 2>&1; then \
+      for f in /etc/apt/sources.list.d/*.sources; do mv "$f" "$f.disabled"; done; \
+    fi; \
+    apt-get update && \
+    apt-get install -y --no-install-recommends sudo && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create user `user` (uid 1000) with NOPASSWD sudo and the standard test
+# password used by the SimpAgent stack.
+RUN set -e; \
+    if ! id user >/dev/null 2>&1; then useradd -m -s /bin/bash -u 1000 user; fi; \
+    echo 'user:password' | chpasswd; \
+    if ! getent group sudo >/dev/null 2>&1; then groupadd sudo; fi; \
+    usermod -aG sudo user; \
+    install -d -m 0750 /etc/sudoers.d; \
+    printf '%s\n' 'user ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-user; \
+    chmod 0440 /etc/sudoers.d/99-user; \
+    install -d -o user -g user -m 0755 /home/user /home/user/.openclaw \
+        /home/user/.openclaw/agents/main/agent \
+        /home/user/.openclaw/agents/main/sessions; \
+    touch /home/user/.openclaw_bootstrap.done; \
+    chown user:user /home/user/.openclaw_bootstrap.done
+
+CMD ["/bin/bash"]
