@@ -83,7 +83,9 @@ def discover_wcb_tasks(
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser()
-    ap.add_argument("backend", choices=["openclaw", "claudecode", "codex", "hermesagent"])
+    ap.add_argument("backend",
+                    choices=["openclaw", "openclaw_gui",
+                             "claudecode", "codex", "hermesagent"])
     ap.add_argument("--task", default=None,
                     help="Path to a single .md to run (skips batch/category iteration).")
     ap.add_argument("--batch", default="all",
@@ -107,8 +109,16 @@ def main() -> None:
     # Resolve endpoint + default model
     agent_base_url, agent_api_key, default_model = wcb_agent_endpoint()
     model = args.model or default_model
+    args.model = model  # so downstream sees the resolved value
 
-    # Construct backend
+    # openclaw_gui doesn't fit the BaseAgent/run_single_task mold — it spawns
+    # its own multi-VM AJ pipeline via the launcher script. Dispatch early.
+    if args.backend == "openclaw_gui":
+        from src.agents.openclaw_gui.runner import drive_openclaw_gui
+        rc = drive_openclaw_gui(args)
+        sys.exit(rc)
+
+    # Construct backend (CLI backends + legacy openclaw)
     backend_name = args.backend
     if backend_name == "openclaw":
         backend = OpenClawAgent(

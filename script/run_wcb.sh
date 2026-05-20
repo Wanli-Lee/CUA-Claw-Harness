@@ -19,13 +19,21 @@ set -euo pipefail
 if [[ $# -lt 1 ]]; then
   cat <<USAGE
 Usage:
-  bash script/run_wcb.sh <openclaw|claudecode|codex|hermesagent> [extra args]
+  bash script/run_wcb.sh <openclaw|openclaw_gui|claudecode|codex|hermesagent> [extra args]
+
+CLI backends (codex/claudecode/hermesagent/openclaw): per-task subprocess
+that talks to the Azure LiteLLM at 4200 and uses 4141 cop-api as judge.
+
+openclaw_gui: GUI backend — boots a full KVM desktop via DesktopEnv and
+runs OpenClaw with Xfce. Uses Agent-as-Judge instead of the in-VM grader.
+Delegates to script/launchers_aj_gui/run_<model>.sh.
 
 Examples:
   bash script/run_wcb.sh codex                          # 114 task × codex × gpt-5.5
   bash script/run_wcb.sh codex --parallel 4
   bash script/run_wcb.sh claudecode --batch batch1
   bash script/run_wcb.sh hermesagent --task tasks_wcb/batch1/DSK/DSK_task_0_multimonitor_layout.md
+  bash script/run_wcb.sh openclaw_gui --task tasks_wcb/batch1/DSK/DSK_task_0_multimonitor_layout.md
 USAGE
   exit 1
 fi
