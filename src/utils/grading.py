@@ -64,8 +64,45 @@ def run_grading(
             write_error_score,
         )
 
+    # Auto-install grader deps (matches user's wildclawbench
+    # GRADER_RUNNER_TEMPLATE._ensure_deps; works around the base image
+    # not having Pillow/pytesseract/imagehash/etc baked in).
+    _ensure_deps_code = '''
+def _ensure_deps():
+    import subprocess, importlib
+    deps = ["pytesseract", "Pillow", "numpy", "imagehash", "cairosvg",
+            "pikepdf", "pdf2image", "pdfannots", "pypdf", "psutil",
+            "openai", "requests"]
+    missing = []
+    for d in deps:
+        mod = {"Pillow": "PIL", "pdf2image": "pdf2image"}.get(d, d.replace("-", "_"))
+        try:
+            importlib.import_module(mod)
+        except Exception:
+            missing.append(d)
+    if missing:
+        try:
+            subprocess.check_call(["pip", "install", "--quiet",
+                                    "--break-system-packages",
+                                    "--disable-pip-version-check",
+                                    "--root-user-action=ignore", *missing],
+                                   timeout=180)
+        except Exception:
+            try:
+                subprocess.check_call(["pip", "install", "--quiet",
+                                        "--disable-pip-version-check",
+                                        "--root-user-action=ignore", *missing],
+                                       timeout=180)
+            except Exception as e:
+                print(f"[_ensure_deps] WARN: pip install failed: {e}", flush=True)
+_ensure_deps()
+'''
     runner_code = "\n".join([
-        "import json",
+        "import json, sys, os",
+        "sys.path.insert(0, '/tmp')",
+        "sys.path.insert(0, '/opt/eval')",
+        "sys.path.insert(0, '/opt')",
+        _ensure_deps_code,
         "from _transcript_loader import load_transcript",
         f"_transcript = load_transcript({json.dumps(transcript_container_path)})",
         "",
@@ -94,6 +131,29 @@ def run_grading(
                 f"docker cp transcript loader failed: {r_loader.stderr}",
                 write_error_score,
             )
+
+        # --- WCB: stage the judge helper into the container ----------------
+        # 108/114 Eyeson_bench task graders do
+        #     from _judge_helper import vlm_score_rubric
+        # Copy our shipped src/utils/_judge_helper.py to /tmp so the
+        # grade runner (which has sys.path=/tmp) can import it.
+        judge_helper_src = Path(__file__).with_name("_judge_helper.py")
+        if judge_helper_src.exists():
+            r_judge = subprocess.run(
+                ["docker", "cp", str(judge_helper_src), f"{task_id}:/tmp/_judge_helper.py"],
+                capture_output=True, text=True,
+            )
+            if r_judge.returncode != 0:
+                logger.warning("[%s] docker cp _judge_helper.py failed (non-fatal): %s",
+                               task_id, r_judge.stderr)
+            else:
+                # Also ensure /opt/eval/_judge_helper.py exists for the
+                # legacy `from eval._judge_helper import ...` import style.
+                subprocess.run(
+                    ["docker", "exec", task_id, "bash", "-c",
+                     "mkdir -p /opt/eval && cp /tmp/_judge_helper.py /opt/eval/_judge_helper.py && touch /opt/eval/__init__.py"],
+                    capture_output=True, text=True,
+                )
 
         r = subprocess.run(
             ["docker", "cp", runner_host, f"{task_id}:/tmp/_grade_runner.py"],
@@ -124,6 +184,9 @@ def run_grading(
         )
         judge_key = os.environ.get("WCB_JUDGE_API_KEY", "")
         judge_model = os.environ.get("WCB_JUDGE_MODEL", "gpt-5.5")
+        # cop-api at 4141 only exposes /v1/responses for gpt-5.x; default
+        # protocol to "responses". Override via WCB_JUDGE_PROTOCOL=chat.
+        judge_protocol = os.environ.get("WCB_JUDGE_PROTOCOL", "responses")
         for k, v in (
             ("JUDGE_BASE_URL", judge_base),
             ("JUDGE_API_KEY", judge_key),
@@ -132,12 +195,14 @@ def run_grading(
             ("OPENROUTER_API_KEY", judge_key or "sk-empty"),
             ("WCB_LITELLM_BASE_URL", judge_base),
             ("WCB_LITELLM_KEY", judge_key or "sk-empty"),
+            ("WCB_JUDGE_PROTOCOL", judge_protocol),
         ):
             env_args += ["-e", f"{k}={v}"]
         logger.info(
-            "[%s] Judge env: %s (model=%s, key=%s)",
+            "[%s] Judge env: %s (model=%s, key=%s, protocol=%s)",
             task_id, judge_base, judge_model,
             "(empty)" if not judge_key else (judge_key[:4] + "***"),
+            judge_protocol,
         )
         # -----------------------------------------------------------------
 
