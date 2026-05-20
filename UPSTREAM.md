@@ -26,3 +26,4 @@ What's *added* vs upstream:
 
 Nothing in this repo writes back to the user's `wildclawbench/` checkout —
 that checkout is referenced read-only via a `tasks_wcb` symlink.
+true; cat /home/wanli/.copilot/session-state/ebb67b93-29d3-477a-a9d4-f58df76095e7/plan.md

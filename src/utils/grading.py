@@ -109,6 +109,38 @@ def run_grading(
             )
 
         env_args: list[str] = []
+
+        # --- WCB judge endpoint injection (CUA-Claw-Harness) -------------
+        # The Eyeson_bench graders call an LLM judge via the env vars below.
+        # In CUA-Claw-Harness we route judge to the local cop-api server
+        # at 4141 (gpt-5.5, no API key required). Override via the
+        # WCB_JUDGE_* env on the host if a different judge is wanted.
+        # In-container the host is reachable at 172.17.0.1 (default docker
+        # bridge). All four key names are populated for backwards
+        # compatibility with graders that hardcode JUDGE_MODEL /
+        # OPENROUTER_BASE_URL / OPENROUTER_API_KEY / WCB_LITELLM_*.
+        judge_base = os.environ.get(
+            "WCB_JUDGE_BASE_URL", "http://172.17.0.1:4141/v1"
+        )
+        judge_key = os.environ.get("WCB_JUDGE_API_KEY", "")
+        judge_model = os.environ.get("WCB_JUDGE_MODEL", "gpt-5.5")
+        for k, v in (
+            ("JUDGE_BASE_URL", judge_base),
+            ("JUDGE_API_KEY", judge_key),
+            ("JUDGE_MODEL", judge_model),
+            ("OPENROUTER_BASE_URL", judge_base),
+            ("OPENROUTER_API_KEY", judge_key or "sk-empty"),
+            ("WCB_LITELLM_BASE_URL", judge_base),
+            ("WCB_LITELLM_KEY", judge_key or "sk-empty"),
+        ):
+            env_args += ["-e", f"{k}={v}"]
+        logger.info(
+            "[%s] Judge env: %s (model=%s, key=%s)",
+            task_id, judge_base, judge_model,
+            "(empty)" if not judge_key else (judge_key[:4] + "***"),
+        )
+        # -----------------------------------------------------------------
+
         for line in extra_env.splitlines():
             key = line.strip()
             if not key or key.startswith("#"):
@@ -131,7 +163,7 @@ def run_grading(
             ["docker", "exec", *env_args, task_id, "python3", "/tmp/_grade_runner.py"],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=int(os.environ.get("WCB_GRADER_TIMEOUT_S", "1800")),
         )
         if r.returncode != 0:
             logger.error("[%s] Grading script execution failed: %s", task_id, r.stderr)
