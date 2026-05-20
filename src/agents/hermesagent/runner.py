@@ -25,7 +25,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-HERMES_IMAGE = os.environ.get("HERMES_DOCKER_IMAGE", "wildclawbench-hermes-agent:v0.5")
+HERMES_IMAGE = os.environ.get("HERMES_DOCKER_IMAGE", "wildclawbench-hermes-agent:v0.1")
 HERMES_HOME = "/root/.hermes"
 HERMES_INSTALL_DIR = "/opt/hermes"
 HERMES_VENV_PYTHON = "/opt/hermes/.venv/bin/python3"

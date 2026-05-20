@@ -116,7 +116,7 @@ class CodexAgent(BaseAgent):
         openrouter_base_url: str = "",
         reasoning_effort_default: str = DEFAULT_REASONING_EFFORT,
     ) -> None:
-        resolved_image = image or os.environ.get("DOCKER_IMAGE_CODEX") or "wildclawbench-codex-ubuntu:v0.0"
+        resolved_image = image or os.environ.get("DOCKER_IMAGE_CODEX") or "wildclawbench-codex-ubuntu:v0.1"
         self.image: str = resolved_image
         self.openrouter_api_key = (
             openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
@@ -433,15 +433,20 @@ class CodexAgent(BaseAgent):
     def _default_wire_api_for_model(self, model: str) -> str | None:
         """Return an explicit wire API override.
 
-        Codex v0.121 rejects provider-level ``wire_api = "chat"``. Keep this
-        as an emergency knob only; do not default MiniMax to chat here.
+        Upstream comment claimed Codex v0.121 rejects ``wire_api = "chat"``.
+        That is no longer true on codex 0.130.0 (verified locally) — and for
+        CUA-Claw-Harness we DEFAULT to chat because our self-hosted LiteLLM
+        proxy (172.17.0.1:4200) only exposes /v1/chat/completions, NOT
+        /v1/responses. Override with CODEX_WIRE_API={chat,responses,default}.
         """
         _ = model
         override = os.environ.get("CODEX_WIRE_API", "").strip().lower()
-        if override == "chat":
-            logger.warning("CODEX_WIRE_API=chat ignored: Codex CLI no longer supports it")
+        if override == "default":
             return None
-        return override or None
+        if override in ("chat", "responses"):
+            return override
+        # default (no override): force chat for WCB endpoint compatibility
+        return "chat"
 
     @staticmethod
     def _is_minimax_model(model: str) -> bool:

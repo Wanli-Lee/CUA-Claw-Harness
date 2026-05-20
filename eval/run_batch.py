@@ -19,10 +19,6 @@ from src.agents.claudecode import ClaudeCodeAgent
 from src.agents.codex import CodexAgent
 from src.agents.openclaw import OpenClawAgent
 from src.utils.cli_args import parse_run_batch_args
-from src.utils.endpoint_utils import (
-    normalize_openrouter_base_url_for_claudecode,
-    normalize_openrouter_base_url_for_openclaw,
-)
 from src.utils.task_parser import parse_task_md
 from src.utils.docker_utils import (
     remove_container,
@@ -36,6 +32,11 @@ from src.utils.grading import (
     print_summary,
     print_global_summary,
     write_error_score as write_error_score_file,
+)
+from src.utils.endpoint_utils import (
+    normalize_openrouter_base_url_for_claudecode,
+    normalize_openrouter_base_url_for_openclaw,
+    wcb_agent_endpoint,
 )
 
 load_dotenv()
@@ -52,15 +53,26 @@ ROOT_DIR         = Path(__file__).resolve().parent.parent
 TASKS_DIR        = ROOT_DIR / os.environ.get("TASKS_SUBDIR",  "tasks")
 OUTPUT_DIR       = ROOT_DIR / os.environ.get("OUTPUT_SUBDIR", "output")
 
-DEFAULT_MODEL    = os.environ.get("DEFAULT_MODEL",    "openrouter/anthropic/claude-sonnet-4.6")
+# --- WCB endpoint resolution (CUA-Claw-Harness) -------------------------
+# Default to the local LiteLLM Azure gpt-5.5 at 4200. wcb_agent_endpoint()
+# honors WCB_AGENT_BASE_URL / WCB_AGENT_API_KEY env overrides, and falls
+# back to OPENROUTER_BASE_URL / OPENROUTER_API_KEY for upstream compat.
+_AGENT_BASE_URL_RAW, AGENT_API_KEY, AGENT_DEFAULT_MODEL = wcb_agent_endpoint()
+DEFAULT_MODEL    = os.environ.get("DEFAULT_MODEL", AGENT_DEFAULT_MODEL)
 DEFAULT_PARALLEL = int(os.environ.get("DEFAULT_PARALLEL", "1"))
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_API_KEY = AGENT_API_KEY
 OPENROUTER_BASE_URL_OPENCLAW = normalize_openrouter_base_url_for_openclaw(
-    os.environ.get("OPENROUTER_BASE_URL", "")
+    _AGENT_BASE_URL_RAW
 )
 OPENROUTER_BASE_URL_CLAUDECODE = normalize_openrouter_base_url_for_claudecode(
-    os.environ.get("OPENROUTER_BASE_URL", "")
+    _AGENT_BASE_URL_RAW
+)
+logger.info(
+    "WCB agent endpoint: base_url=%s, key=%s..., model=%s",
+    _AGENT_BASE_URL_RAW,
+    (AGENT_API_KEY[:8] + "***") if AGENT_API_KEY else "(empty)",
+    AGENT_DEFAULT_MODEL,
 )
 MODELS_API_KEY_PLACEHOLDER = "${MY_PROXY_API_KEY}"
 

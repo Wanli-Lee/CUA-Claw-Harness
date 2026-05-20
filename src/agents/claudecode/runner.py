@@ -37,7 +37,7 @@ class ClaudeCodeAgent(BaseAgent):
             image
             or os.environ.get("DOCKER_IMAGE_CLAUDECODE")
             or os.environ.get("CLAUDECODE_DOCKER_IMAGE")
-            or "wildclawbench-claudecode-ubuntu:v0.2"
+            or "wildclawbench-claudecode-ubuntu:v0.1"
         )
         explicit_api_key = anthropic_api_key.strip()
         self.api_key = explicit_api_key or os.environ.get("OPENROUTER_API_KEY", "")
