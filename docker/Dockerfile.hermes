@@ -64,3 +64,16 @@ ENV http_proxy=  https_proxy=  HTTP_PROXY=  HTTPS_PROXY=  no_proxy=*  NO_PROXY=*
 LABEL org.opencontainers.image.title="wildclawbench-hermes-agent" \
       org.opencontainers.image.source="https://github.com/Wanli-Lee/CUA-Claw-Harness" \
       cua.claw.harness="hermes"
+
+# Bake grader deps so per-task grader doesn't need pip install (mirrors
+# wildclawbench GRADER_RUNNER_TEMPLATE._ensure_deps).
+RUN HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    pip install --no-cache-dir --upgrade pip \
+ && HTTP_PROXY=${BUILD_PROXY} HTTPS_PROXY=${BUILD_PROXY} \
+    http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY} \
+    no_proxy= NO_PROXY= \
+    pip install --no-cache-dir \
+        Pillow numpy imagehash pytesseract cairosvg \
+        pikepdf pdf2image pdfannots pypdf psutil openai requests
