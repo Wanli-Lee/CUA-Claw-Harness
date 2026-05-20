@@ -5,3 +5,32 @@ yt-dlp
 modelscope
 python-dotenv
 pyyaml
+
+# ---- DesktopEnv runtime (P6e, brought in by openclaw_gui backend) ----
+# These are required by desktop_env/ (KVM provider, evaluators, controller).
+# If you intend to run only the CLI backends (codex/claudecode/hermesagent),
+# they're optional. The pre-baked conda env at
+#   /mnt/nas_nfs/home/wanli/conda_envs/gui0_nas/
+# already has all of these and is the default PY_BIN for openclaw_gui.
+gymnasium
+pyautogui
+Pillow
+lxml
+beautifulsoup4
+docker          # python sdk used by desktop_env/providers/docker/
+filelock
+psutil
+rapidfuzz
+imagehash
+# Optional per-evaluator deps (install on demand if a task needs them):
+#   pyatspi pyxcursor Xlib pywinauto pygetwindow mss screeninfo
+#   scipy scikit-image opencv-python easyocr
+#   librosa fastdtw mutagen acoustid
+#   boto3 botocore alibabacloud-* azure-* volcenginesdk-*
+#   playwright pydrive pytz tldextract xmltodict requests-toolbelt
+#   formulas borb pikepdf pdfplumber pdf2image pdfannots pypdf python-docx python-pptx odfpy openpyxl
+
+# ---- CUA-Claw-Harness CLI-backend deps ----
+# (codex/claudecode use docker CLI not python sdk; hermes installs into
+#  /opt/hermes/.venv inside its image; the host driver only needs:)
+openai          # for src/utils/_judge_helper.py
